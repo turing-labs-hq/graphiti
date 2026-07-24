@@ -127,8 +127,9 @@ async def initialize_graphiti(settings: ZepEnvDep):
         await client.close()
 
 
-def get_fact_result_from_edge(edge: EntityEdge):
+def get_fact_result_from_edge(edge: EntityEdge, score: float | None = None):
     return FactResult(
+        score=score,
         uuid=edge.uuid,
         name=edge.name,
         fact=edge.fact,

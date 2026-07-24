@@ -73,6 +73,10 @@ class Document(BaseModel):
     transcript, or file. Only extract documents referred to by name or clear
     description — not generic mentions like 'the doc'."""
 
+    url: str | None = Field(
+        default=None,
+        description='Direct link to the document (web view or storage URL) if one is stated.',
+    )
     doc_type: str | None = Field(
         default=None, description='Kind of document if stated, e.g. contract, deck, spec'
     )

@@ -2,10 +2,19 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, status
 
+from graphiti_core.search.search_config_recipes import (  # type: ignore
+    EDGE_HYBRID_SEARCH_RRF,
+    NODE_HYBRID_SEARCH_RRF,
+)
+from graphiti_core.search.search_filters import SearchFilters  # type: ignore
+
 from graph_service.dto import (
     GetMemoryRequest,
     GetMemoryResponse,
     Message,
+    NodeResult,
+    NodeSearchQuery,
+    NodeSearchResults,
     SearchQuery,
     SearchResults,
 )
@@ -16,15 +25,59 @@ router = APIRouter()
 
 @router.post('/search', status_code=status.HTTP_200_OK)
 async def search(query: SearchQuery, graphiti: ZepGraphitiDep):
-    relevant_edges = await graphiti.search(
-        group_ids=query.group_ids,
-        query=query.query,
-        num_results=query.max_facts,
+    # search_() (not search()) so we get reranker scores back, can honor a
+    # relevance floor, and can apply the label filter the old DTO silently
+    # dropped. Deep-copy the recipe — never mutate the module-level singleton.
+    config = EDGE_HYBRID_SEARCH_RRF.model_copy(deep=True)
+    config.limit = query.max_facts
+    if query.min_score is not None:
+        config.reranker_min_score = query.min_score
+    search_filter = (
+        SearchFilters(node_labels=query.entity_types) if query.entity_types else SearchFilters()
     )
-    facts = [get_fact_result_from_edge(edge) for edge in relevant_edges]
+    results = await graphiti.search_(
+        query=query.query,
+        config=config,
+        group_ids=query.group_ids,
+        search_filter=search_filter,
+    )
+    scores = list(results.edge_reranker_scores) + [None] * len(results.edges)
+    facts = [
+        get_fact_result_from_edge(edge, score=score)
+        for edge, score in zip(results.edges, scores, strict=False)
+    ]
     return SearchResults(
         facts=facts,
     )
+
+
+@router.post('/search-nodes', status_code=status.HTTP_200_OK)
+async def search_nodes(query: NodeSearchQuery, graphiti: ZepGraphitiDep):
+    """Hybrid search over entity NODES (e.g. Document) — returns
+    name/summary/labels/attributes, which the edge-only /search cannot."""
+    config = NODE_HYBRID_SEARCH_RRF.model_copy(deep=True)
+    config.limit = query.max_nodes
+    search_filter = (
+        SearchFilters(node_labels=query.entity_types) if query.entity_types else SearchFilters()
+    )
+    results = await graphiti.search_(
+        query=query.query,
+        config=config,
+        group_ids=query.group_ids,
+        search_filter=search_filter,
+    )
+    scores = list(results.node_reranker_scores) + [None] * len(results.nodes)
+    nodes = [
+        NodeResult(
+            uuid=node.uuid, name=node.name, summary=node.summary,
+            labels=list(node.labels or []), group_id=node.group_id,
+            attributes={k: v for k, v in (node.attributes or {}).items()
+                        if isinstance(v, (str, int, float, bool)) or v is None},
+            score=score,
+        )
+        for node, score in zip(results.nodes, scores, strict=False)
+    ]
+    return NodeSearchResults(nodes=nodes)
 
 
 @router.get('/entity-edge/{uuid}', status_code=status.HTTP_200_OK)
