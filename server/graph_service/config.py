@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     # Set ONTOLOGY_ENABLED=false to fall back to untyped extraction without
     # a rollback build.
     ontology_enabled: bool = Field(True)
+    # Domain glossary (ontology.GLOSSARY) passed to extraction as
+    # custom_extraction_instructions. Independent of the ontology switch —
+    # it disambiguates terms, it does not type anything. GLOSSARY_ENABLED=false
+    # drops it without a rollback build.
+    glossary_enabled: bool = Field(True)
 
     model_config = SettingsConfigDict(env_file='.env', extra='ignore')
 

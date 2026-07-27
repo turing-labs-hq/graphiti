@@ -83,6 +83,32 @@ def cypher_to_opensearch_operator(op: ComparisonOperator) -> str:
     return mapping.get(op, op.value)
 
 
+def label_disjunction(alias: str, labels: list[str]) -> str:
+    """FalkorDB label filter: `(n:A OR n:B)`.
+
+    FalkorDB does not implement Cypher label expressions (`n:A|B`) — it is
+    listed under "Unsupported" in their Cypher-coverage docs (tracking issue
+    FalkorDB#458, open since 2023) and every multi-label search therefore fails
+    the whole query with a parse error. Their documented equivalent is a
+    WHERE-clause disjunction.
+
+    THE OUTER PARENTHESES ARE LOAD-BEARING. `search_utils` joins filter
+    fragments with ' AND ', and Cypher binds AND tighter than OR, so a bare
+    `n:A OR n:B` would produce
+        WHERE n:A OR n:B AND e.group_id IN $group_ids
+    which parses as `n:A OR (n:B AND e.group_id IN $group_ids)` — silently
+    returning facts from OTHER groups. That is strictly worse than the parse
+    error it replaces.
+
+    Labels are interpolated, not parameterised (Cypher cannot parameterise a
+    label), so `validate_node_labels()` at every call site remains the
+    injection defence (CVE-2026-32247 / GHSA-gg5m-55jj-8m5g).
+    """
+    if not labels:
+        return ''
+    return '(' + ' OR '.join(f'{alias}:{label}' for label in labels) + ')'
+
+
 def node_search_filter_query_constructor(
     filters: SearchFilters,
     provider: GraphProvider,
@@ -96,10 +122,17 @@ def node_search_filter_query_constructor(
         if provider == GraphProvider.KUZU:
             node_label_filter = 'list_has_all(n.labels, $labels)'
             filter_params['labels'] = filters.node_labels
+        elif provider == GraphProvider.FALKORDB:
+            node_label_filter = label_disjunction('n', filters.node_labels)
         else:
             node_labels = '|'.join(filters.node_labels)
             node_label_filter = 'n:' + node_labels
-        filter_queries.append(node_label_filter)
+        # `node_labels=[]` means "filter on nothing". Emitting a fragment for
+        # it produced invalid Cypher on FalkorDB/Neo4j (`n:`) and a tautology
+        # on Kuzu (`list_has_all(n.labels, [])` is true for every node), so
+        # dropping it is equivalent where it worked and a fix where it didn't.
+        if filters.node_labels:
+            filter_queries.append(node_label_filter)
 
     return filter_queries, filter_params
 
@@ -141,10 +174,20 @@ def edge_search_filter_query_constructor(
                 'list_has_all(n.labels, $labels) AND list_has_all(m.labels, $labels)'
             )
             filter_params['labels'] = filters.node_labels
+        elif provider == GraphProvider.FALKORDB:
+            # NB: both endpoints must match — that is upstream's semantics for
+            # node_labels on EDGE search, not something this patch introduces.
+            node_label_filter = (
+                label_disjunction('n', filters.node_labels)
+                + ' AND '
+                + label_disjunction('m', filters.node_labels)
+            )
         else:
             node_labels = '|'.join(filters.node_labels)
             node_label_filter = 'n:' + node_labels + ' AND m:' + node_labels
-        filter_queries.append(node_label_filter)
+        # See the node constructor: an empty label list filters on nothing.
+        if filters.node_labels:
+            filter_queries.append(node_label_filter)
 
     if filters.valid_at is not None:
         valid_at_filter = '('

@@ -78,6 +78,12 @@ COPY ./graphiti_core/driver/falkordb_driver.py /app/.venv/lib/python3.12/site-pa
 # returned 202). Every deterministic-uuid writer (the nightly n8n ingest jobs,
 # the concierge remember tool) depends on insert-or-update semantics.
 COPY ./graphiti_core/graphiti.py /app/.venv/lib/python3.12/site-packages/graphiti_core/graphiti.py
+# FalkorDB label-expression fix: upstream builds Neo4j-5 label expressions
+# (`n:A|B`) for multi-label search filters. FalkorDB does not implement label
+# expressions (FalkorDB#458), so EVERY multi-type search fails the whole query
+# with a parse error — rewritten to the parenthesised OR-form FalkorDB
+# documents. Without this COPY, that fix is silently inert.
+COPY ./graphiti_core/search/search_filters.py /app/.venv/lib/python3.12/site-packages/graphiti_core/search/search_filters.py
 
 # Change ownership to app user
 RUN chown -R app:app /app

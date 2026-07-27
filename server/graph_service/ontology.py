@@ -225,3 +225,41 @@ EDGE_TYPE_MAP: dict[tuple[str, str], list[str]] = {
     ('Project', 'Capability'): ['REQUIRES_CAPABILITY'],
     ('RFP', 'Capability'): ['REQUIRES_CAPABILITY'],
 }
+
+
+# --------------------------------------------------------------------------
+# Domain glossary — free-text guidance passed to add_episode() as
+# `custom_extraction_instructions`.
+#
+# WHY NOT DOCSTRINGS: entity/edge docstrings above are per-TYPE, are only
+# reachable from the type they describe, and are truncated to their first
+# paragraph in the summarization path. `custom_extraction_instructions` is
+# rendered verbatim into the NODE extraction prompt AND the EDGE extraction
+# prompt, so it is the only slot that reaches both and is never truncated.
+#
+# COST: this text rides every extraction call — keep it short, keep it to
+# terms the extractor demonstrably gets wrong, and add to it only from
+# observed misreadings.
+#
+# Observed misreading that prompted this (2026-07-27): a file named
+# "notes on pe 3.0.txt" was extracted as "notes about PE (Portable
+# Executable) version 3.0" in a private-equity consultancy's graph.
+# --------------------------------------------------------------------------
+
+GLOSSARY = """\
+Domain context for this organization — read ambiguous terms this way:
+- These records belong to Turing Labs ("TL"), an AI and data consultancy whose
+  clients are mainly private-capital, financial-services, education and sports
+  organizations.
+- "PE" means private equity. It never means Portable Executable or physical
+  education. "GP" and "LP" mean general partner and limited partner, "AUM" is
+  assets under management, "DD" is due diligence, "IC" is investment committee.
+- "RFP", "RFI" and "ITT" are competitive bid documents (request for proposal,
+  request for information, invitation to tender).
+- "SOW" is a statement of work, "MSA" a master services agreement, "EL" an
+  engagement letter, "NDA" a non-disclosure agreement.
+- "MCP" means Model Context Protocol, "LLM" a large language model, "RAG"
+  retrieval-augmented generation.
+Read every acronym in that business context first. If a term is still
+ambiguous, keep the episode's own wording rather than inventing an expansion,
+and never expand an acronym the episode does not itself explain."""

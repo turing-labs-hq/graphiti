@@ -9,7 +9,7 @@ from graphiti_core.utils.maintenance.graph_data_operations import clear_data  # 
 
 from graph_service.config import get_settings
 from graph_service.dto import AddEntityNodeRequest, AddMessagesRequest, Message, Result
-from graph_service.ontology import EDGE_TYPE_MAP, EDGE_TYPES, ENTITY_TYPES
+from graph_service.ontology import EDGE_TYPE_MAP, EDGE_TYPES, ENTITY_TYPES, GLOSSARY
 from graph_service.zep_graphiti import ZepGraphitiDep
 
 logger = logging.getLogger(__name__)
@@ -80,7 +80,11 @@ async def add_messages(
         # Typed ontology (graph_service/ontology.py): constrains extraction to
         # the shared bundle/graph node + edge types. ONTOLOGY_ENABLED=false
         # reverts to untyped extraction without a rollback build.
-        ontology_on = get_settings().ontology_enabled
+        settings = get_settings()
+        ontology_on = settings.ontology_enabled
+        # The domain glossary reaches BOTH the node and edge extraction prompts
+        # (type docstrings reach neither the edge extractor nor each other), so
+        # it is where cross-cutting term disambiguation belongs.
         await graphiti.add_episode(
             uuid=m.uuid,
             group_id=request.group_id,
@@ -92,6 +96,7 @@ async def add_messages(
             entity_types=ENTITY_TYPES if ontology_on else None,
             edge_types=EDGE_TYPES if ontology_on else None,
             edge_type_map=EDGE_TYPE_MAP if ontology_on else None,
+            custom_extraction_instructions=GLOSSARY if settings.glossary_enabled else None,
         )
 
     for m in request.messages:

@@ -22,6 +22,23 @@ class SearchQuery(BaseModel):
     min_score: float | None = Field(
         None, description='Minimum fused relevance score for returned facts'
     )
+    # Bi-temporal history. Graphiti EXPIRES a superseded edge (sets expired_at)
+    # and never deletes it, so by default search kept serving facts that a
+    # later correction had already overridden. Default False = only live facts;
+    # set True for point-in-time / audit queries.
+    include_invalidated: bool = Field(
+        False, description='Also return facts Graphiti has superseded (expired_at set)'
+    )
+    # Filters on the RELATION type (e.name) with NO endpoint coupling — unlike
+    # entity_types, which requires BOTH endpoints to carry a listed label and
+    # therefore cannot express "facts about decisions, whatever they relate to".
+    edge_types: list[str] | None = Field(
+        None, description='Restrict facts to these relation types, e.g. ["DECIDED", "AFFECTS"]'
+    )
+    # Recency window on TRANSACTION time (created_at): facts written recently.
+    changed_within_days: int | None = Field(
+        None, ge=1, description='Only return facts created within the last N days'
+    )
 
 
 class NodeSearchQuery(BaseModel):
