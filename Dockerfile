@@ -6,6 +6,12 @@ FROM python:3.12-slim
 # latest graphiti-core (and transitively bumping openai/neo4j/pydantic majors)
 # on every uncached build. Bump this deliberately, never implicitly.
 ARG GRAPHITI_VERSION=0.29.2
+# `redis` arrives TRANSITIVELY via graphiti-core[falkordb] and is resolved by the
+# `uv pip install` below, OUTSIDE uv.lock — so it floats on every uncached build.
+# redis 8.1.0 breaks falkordb's Is_Cluster() (forwards async connection kwargs
+# into a sync Redis(**kwargs) -> unexpected keyword 'himport_registry') and the
+# app dies in FalkorDriver.__init__. 8.0.1 is the last version known to boot.
+ARG REDIS_VERSION=8.0.1
 ARG BUILD_DATE
 ARG VCS_REF
 
@@ -51,7 +57,7 @@ RUN --mount=type=cache,target=/root/.cache/uv,id=s/a5e8d61f-bfe2-4d50-be77-ef89c
     uv sync --frozen --no-dev && \
     if [ -n "$GRAPHITI_VERSION" ]; then \
         if [ "$INSTALL_FALKORDB" = "true" ]; then \
-            uv pip install --upgrade "graphiti-core[falkordb]==$GRAPHITI_VERSION"; \
+            uv pip install --upgrade "graphiti-core[falkordb]==$GRAPHITI_VERSION" "redis==$REDIS_VERSION"; \
         else \
             uv pip install --upgrade "graphiti-core==$GRAPHITI_VERSION"; \
         fi; \
