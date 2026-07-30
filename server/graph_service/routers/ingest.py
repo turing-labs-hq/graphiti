@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from functools import partial
 
 from fastapi import APIRouter, FastAPI, status
@@ -22,19 +22,43 @@ class AsyncWorker:
 
     async def worker(self):
         while True:
+            label = '?'
             try:
-                job = await self.queue.get()
+                label, job = await self.queue.get()
                 print(f'Got a job: (size of remaining queue: {self.queue.qsize()})')
-                await job()
-                logger.info('Ingest job completed (remaining queue: %s)', self.queue.qsize())
+                logger.info(
+                    'Ingest job started: %s (remaining queue: %s)', label, self.queue.qsize()
+                )
+                timeout = get_settings().ingest_job_timeout_seconds
+                await asyncio.wait_for(job(), timeout if timeout > 0 else None)
+                logger.info(
+                    'Ingest job completed: %s (remaining queue: %s)', label, self.queue.qsize()
+                )
             except asyncio.CancelledError:
                 break
+            except TimeoutError:
+                # asyncio.TimeoutError is the builtin TimeoutError on >=3.11.
+                # wait_for has cancelled the hung coroutine. Without this
+                # watchdog, one non-returning await — e.g. a DB read blocking
+                # forever (FalkorDB runs TIMEOUT=0 and redis-py's default
+                # socket_timeout is None) — froze the whole serial queue with
+                # zero log output (observed 2026-07-29 at queue depth 44 and
+                # 2026-07-30 at depth 6). Episode uuids are deterministic, so
+                # the aborted job re-runs safely on the next sync.
+                logger.error(
+                    'Ingest job TIMED OUT after %ss: %s (remaining queue: %s) — '
+                    'cancelled, continuing with next job',
+                    get_settings().ingest_job_timeout_seconds,
+                    label,
+                    self.queue.qsize(),
+                )
             except Exception:
                 # A failed job must never kill the worker: before this guard, the
                 # first exception escaped the loop and every later queued job was
                 # accepted (202) but silently never processed (upstream #566/#1574).
                 logger.exception(
-                    'Ingest job failed (remaining queue: %s) — continuing with next job',
+                    'Ingest job failed: %s (remaining queue: %s) — continuing with next job',
+                    label,
                     self.queue.qsize(),
                 )
 
@@ -44,7 +68,10 @@ class AsyncWorker:
     async def stop(self):
         if self.task:
             self.task.cancel()
-            await self.task
+            # Without suppress, the CancelledError re-raises through lifespan
+            # teardown and pollutes shutdown logs.
+            with suppress(asyncio.CancelledError):
+                await self.task
         while not self.queue.empty():
             self.queue.get_nowait()
 
@@ -100,7 +127,10 @@ async def add_messages(
         )
 
     for m in request.messages:
-        await async_worker.queue.put(partial(add_messages_task, m))
+        # Label the job so the worker can name what it is running — a stalled
+        # or timed-out job is otherwise anonymous in the logs.
+        label = f'{request.group_id}/{m.uuid or m.name}'
+        await async_worker.queue.put((label, partial(add_messages_task, m)))
 
     return Result(message='Messages added to processing queue', success=True)
 

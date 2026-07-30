@@ -33,6 +33,13 @@ class Settings(BaseSettings):
     # drops it without a rollback build.
     glossary_enabled: bool = Field(True)
 
+    # Per-job watchdog for the ingest worker (seconds). A job that exceeds this
+    # is cancelled and logged and the worker moves on — one non-returning await
+    # must never freeze the whole serial queue (silent stalls observed
+    # 2026-07-29/30 at random depths with zero log output). Set
+    # INGEST_JOB_TIMEOUT_SECONDS=0 to disable without a rollback build.
+    ingest_job_timeout_seconds: int = Field(300)
+
     model_config = SettingsConfigDict(env_file='.env', extra='ignore')
 
 

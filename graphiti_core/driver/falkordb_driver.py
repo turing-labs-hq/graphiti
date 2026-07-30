@@ -170,6 +170,14 @@ class FalkorDriver(GraphDriver):
                 password=password,
                 socket_keepalive=True,
                 health_check_interval=25,
+                # Bound every blocking socket read. FalkorDB runs with TIMEOUT=0
+                # (no server-side query kill) and redis-py's default
+                # socket_timeout=None blocks forever — one stuck read froze the
+                # serial ingest worker mid-job (2026-07-29/30). A killed long
+                # read raises through the worker's exception guard instead; the
+                # job is retried on the next sync (episode uuids are
+                # deterministic, so re-runs supersede rather than duplicate).
+                socket_timeout=180,
             )
 
         # Instantiate FalkorDB operations
