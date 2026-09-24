@@ -1,0 +1,231 @@
+name: image
+
+# Builds the graphiti fork's FastAPI server (the root Dockerfile: graph_service from server/ over
+# graphiti-core from PyPI, with this repo's graphiti_core/ fixes copied over it) into our AWS
+# registry as loop-stack/graphiti, the image the loop stack's `graphiti` catalog block pins
+# (tl-platform stack/catalog/blocks/graphiti/block.json), the way every tl-platform product image is
+# built (tlmcp's and memory-infra's image.yml are the model). Railway's build of the same Dockerfile
+# (Turing-Brain / graphiti) is what it replaces; both build this one Dockerfile with its CMD, so both
+# run the same service.
+#
+# The test job gates the build: a red check means no image. The upstream test workflows cannot be
+# that gate, they run on Zep's depot runners (this org has none, so they only queue) and none is
+# callable. So the gate is this repo's own: pyflakes over what goes into the image, then the amd64
+# image itself, imported, its graphiti_core overlays proved live, and booted against the FalkorDB
+# the falkordb block runs, with the block's env names and the block's own healthcheck.
+#
+# Two prerequisites live outside this repo: the push role and the report secret. The role is
+# tl-platform cloud/control/registry/aws-registry.sh `ci graphiti loop-stack` (ADMIN), the ECR
+# repository its `client loop ... graphiti`. Without the role the image job fails at the AWS step and
+# nothing is pushed; without the secret the image is pushed and the report is skipped with a log line
+# naming the digest.
+on:
+  push:
+    branches: [main]
+    # What goes into the image (the Dockerfile copies server/pyproject.toml, uv.lock, README.md and
+    # graph_service/, plus files from graphiti_core/; a .dockerignore would shape the context) and
+    # this workflow. All of graphiti_core/ rather than the overlaid files alone: a fix that is
+    # edited without a rebuild is silently not shipped, a needless rebuild costs one build.
+    paths:
+      - "Dockerfile"
+      - ".dockerignore"
+      - "server/pyproject.toml"
+      - "server/uv.lock"
+      - "server/README.md"
+      - "server/graph_service/**"
+      - "graphiti_core/**"
+      - ".github/workflows/image.yml"
+  # A manual run pushes only from main: the push role trusts this repo's main and nothing else.
+  workflow_dispatch: {}
+
+# Nothing by default; each job names what it needs.
+permissions: {}
+
+# One build at a time, in push order: with automatic releases on, a slower older build reporting
+# after a newer one would read as the newer build.
+concurrency:
+  group: image-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      # The falkordb catalog block's image (falkordb/falkordb:v4.20.6), pinned by its multi-arch
+      # index digest. Move it with the block.
+      FALKORDB_IMAGE: falkordb/falkordb:v4.20.6@sha256:217bc520be076ce9e85b0ba426b2379ccbaebd17f2fe6e174288bd1b36d486bb
+      TEST_IMAGE: graphiti-ci:test
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: pyflakes over what goes into the image
+        # Hard errors only (syntax, undefined names, unused imports): style is lint.yml's job, and a
+        # style nit must not hold back a fix. ruff pinned to the version uv.lock and lint.yml use.
+        run: pipx run --spec ruff==0.14.11 ruff check --select E9,F --output-format=github server/graph_service graphiti_core
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - name: build the amd64 image (never pushed)
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          load: true
+          push: false
+          # The block runs graphiti over FalkorDB: graphiti-core[falkordb] and the pinned redis.
+          build-args: |
+            INSTALL_FALKORDB=true
+          tags: ${{ env.TEST_IMAGE }}
+      - name: the server imports
+        run: docker run --rm --entrypoint python "$TEST_IMAGE" -c 'import graph_service.main, falkordb, redis'
+      - name: the graphiti_core overlays are live
+        # The Dockerfile copies this repo's graphiti_core fixes over the PyPI install at a path that
+        # names the Python version. If the base image's Python moves, the COPY still succeeds into a
+        # directory nothing imports and the fix is silently inert. Every such COPY must land on the
+        # file the installed package actually loads, with this commit's content.
+        run: |
+          docker run -i --rm -v "$PWD:/src:ro" --entrypoint python "$TEST_IMAGE" - <<'PY'
+          import hashlib, pathlib, re, sys
+          import graphiti_core
+          pkg = pathlib.Path(graphiti_core.__file__).resolve().parent
+          dockerfile = pathlib.Path('/src/Dockerfile').read_text()
+          pairs = re.findall(r'^COPY\s+(?:--\S+\s+)*\.?/?graphiti_core/(\S+)\s+(\S+)\s*$', dockerfile, re.M)
+          bad = 0
+          for rel, dest in pairs:
+              live = pkg / rel
+              on_path = pathlib.Path(dest).resolve() == live
+              same = live.is_file() and hashlib.sha256(live.read_bytes()).digest() == hashlib.sha256(pathlib.Path('/src/graphiti_core', rel).read_bytes()).digest()
+              print(f"{'ok ' if on_path and same else 'BAD'} {rel} -> {dest}")
+              bad += not (on_path and same)
+          print(f'{len(pairs)} overlays, {bad} not live (package at {pkg})')
+          sys.exit(1 if bad else 0)
+          PY
+      - name: the image boots against FalkorDB and enforces its bearer
+        # The block's env names with throwaway values: no real key or password exists in this job.
+        # PORT is inert (the image's CMD binds 8000 whatever it says) and set only because the block
+        # sets it.
+        env:
+          PORT: "8000"
+          OPENAI_API_KEY: ci-not-a-key
+          DB_BACKEND: falkordb
+          FALKORDB_HOST: falkordb
+          FALKORDB_PORT: "6379"
+          FALKORDB_PASSWORD: ci-throwaway-password
+          FALKORDB_DATABASE: default_db
+          GRAPHITI_TOKEN: ci-throwaway-token
+          ONTOLOGY_ENABLED: "true"
+          GLOSSARY_ENABLED: "true"
+          INGEST_JOB_TIMEOUT_SECONDS: "300"
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; docker logs graphiti 2>&1 | tail -60 || true; exit 1; }
+          docker network create graphiti-ci >/dev/null
+          docker run -d --name falkordb --network graphiti-ci --network-alias falkordb \
+            -e BROWSER=0 -e REDIS_ARGS="--requirepass ${FALKORDB_PASSWORD}" "$FALKORDB_IMAGE" >/dev/null
+          for i in $(seq 1 60); do
+            docker exec falkordb redis-cli -a "$FALKORDB_PASSWORD" --no-auth-warning ping 2>/dev/null | grep -q PONG && break
+            [ "$i" -eq 60 ] && { docker logs falkordb 2>&1 | tail -30; echo "::error::falkordb did not answer in 60s"; exit 1; }
+            sleep 1
+          done
+          docker run -d --name graphiti --network graphiti-ci -p 127.0.0.1:8000:8000 \
+            -e PORT -e OPENAI_API_KEY -e DB_BACKEND -e FALKORDB_HOST -e FALKORDB_PORT -e FALKORDB_PASSWORD \
+            -e FALKORDB_DATABASE -e GRAPHITI_TOKEN -e ONTOLOGY_ENABLED -e GLOSSARY_ENABLED \
+            -e INGEST_JOB_TIMEOUT_SECONDS "$TEST_IMAGE" >/dev/null
+          # The block gives it a 60s start period; 90s here before calling it hung.
+          for i in $(seq 1 90); do
+            [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/healthcheck || true)" = 200 ] && break
+            [ "$(docker inspect -f '{{.State.Running}}' graphiti)" = true ] || fail "graphiti exited during startup"
+            [ "$i" -eq 90 ] && fail "graphiti did not answer /healthcheck in 90s"
+            sleep 1
+          done
+          echo "healthcheck 200 after ${i}s"
+          # The block's own healthcheck command, run the way Compose runs it.
+          docker exec graphiti sh -c "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:8000/healthcheck')\" || exit 1" \
+            || fail "the block's healthcheck command fails in this image"
+          [ "$(docker exec graphiti id -u)" != 0 ] || fail "the server runs as root"
+          url='http://127.0.0.1:8000/episodes/ci-smoke?last_n=1'
+          code=$(curl -s -o /dev/null -w '%{http_code}' "$url")
+          [ "$code" = 401 ] || fail "no bearer: expected 401, got $code (the API is open)"
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer wrong' "$url")
+          [ "$code" = 401 ] || fail "wrong bearer: expected 401, got $code"
+          # The right bearer reads the empty graph through the overlaid FalkorDB driver.
+          code=$(printf 'Authorization: Bearer %s\n' "$GRAPHITI_TOKEN" | curl -s -o /dev/null -w '%{http_code}' -H @- "$url")
+          [ "$code" = 200 ] || fail "right bearer: expected 200 from FalkorDB, got $code"
+          echo "boot, healthcheck, non-root, 401 without and with a wrong bearer, 200 with the right one"
+      - name: clean up
+        if: always()
+        run: docker rm -f graphiti falkordb >/dev/null 2>&1 || true
+
+  image:
+    needs: test
+    runs-on: ubuntu-latest
+    # arm64 is built under QEMU, several times slower than the native amd64 build.
+    timeout-minutes: 45
+    permissions:
+      # The only credential here is a GitHub-issued OIDC token, exchanged for a short-lived AWS
+      # session by a role that trusts this repo's id on main and can push nothing but loop-stack
+      # images. No AWS secret is stored in GitHub.
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      # A stack runs on whatever the host has - build for both common architectures (an
+      # amd64-only image cannot be released to an arm64 host: the agent's pull yields nothing and
+      # the swap rolls back). The server's deps come from server/uv.lock and graphiti-core, falkordb
+      # and redis are pinned by version in the Dockerfile; all ship wheels for both.
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: arn:aws:iam::102865637207:role/tl-ci-push-graphiti
+          aws-region: eu-north-1
+      - uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        id: build
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          # Same build args as the tested amd64 image; VCS_REF only fills the revision label.
+          build-args: |
+            INSTALL_FALKORDB=true
+            VCS_REF=${{ github.sha }}
+          # The Dockerfile's source label names upstream; say which repo this image came from.
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          tags: |
+            102865637207.dkr.ecr.eu-north-1.amazonaws.com/loop-stack/graphiti:sha-${{ github.sha }}
+      - name: report the digest to Mission Control
+        # Every value goes through the environment and json.dumps, never into the shell line: the
+        # commit message is attacker-influenced text and this step handles a bearer token. The
+        # token is moved into an unexported shell variable at once, so neither python3 nor curl
+        # inherits it, and reaches curl on stdin (-H @-), never in its argv. An empty or unset
+        # secret skips the report and the build stays green: the image is already pushed.
+        env:
+          TOKEN: ${{ secrets.TLC_IMAGE_REPORT_TOKEN }}
+          IMAGE: 102865637207.dkr.ecr.eu-north-1.amazonaws.com/loop-stack/graphiti
+          DIGEST: ${{ steps.build.outputs.digest }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          MSG: ${{ github.event.head_commit.message }}
+        run: |
+          token="${TOKEN:-}"
+          unset TOKEN
+          if [ -z "$token" ]; then
+            echo "::notice title=report skipped::TLC_IMAGE_REPORT_TOKEN is not set, so Mission Control was not told; the image is pushed as ${IMAGE}@${DIGEST}"
+            exit 0
+          fi
+          payload=$(python3 -c 'import json,os;print(json.dumps({"image":os.environ["IMAGE"],"digest":os.environ["DIGEST"],"repo":os.environ["REPO"],"commit_sha":os.environ["SHA"],"run_url":"https://github.com/"+os.environ["REPO"]+"/actions/runs/"+os.environ["RUN_ID"],"commit_msg":os.environ.get("MSG","")[:290]}))')
+          printf 'Authorization: Bearer %s\n' "$token" \
+            | curl -sSf --max-time 30 -X POST "https://tl-control-api.up.railway.app/v1/images/report" \
+                -H @- \
+                -H "Content-Type: application/json" \
+                --data-raw "$payload" > /dev/null
+          echo "reported ${IMAGE}@${DIGEST}"
