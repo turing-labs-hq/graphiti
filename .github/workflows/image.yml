@@ -19,6 +19,13 @@ name: image
 # repository its `client loop ... graphiti`. Without the role the image job fails at the AWS step and
 # nothing is pushed; without the secret the image is pushed and the report is skipped with a log line
 # naming the digest.
+#
+# Each credential sits with the one job that needs it. The image job holds only a GitHub-issued
+# OIDC token for the push role, and no environment: an environment changes the OIDC subject and the
+# role's trust, pinned to this repo's id on main, would refuse it. The report job holds
+# TLC_IMAGE_REPORT_TOKEN, a secret of the GitHub environment `image-report`, whose deployment
+# branches are main only, so no pull-request workflow can read it. A report can become a release,
+# so this token is a deploy credential, never a repository secret.
 on:
   push:
     branches: [main]
@@ -170,6 +177,8 @@ jobs:
       # images. No AWS secret is stored in GitHub.
       contents: read
       id-token: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -201,6 +210,14 @@ jobs:
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
           tags: |
             102865637207.dkr.ecr.eu-north-1.amazonaws.com/loop-stack/graphiti:sha-${{ github.sha }}
+
+  report:
+    needs: image
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: image-report
+    permissions: {}
+    steps:
       - name: report the digest to Mission Control
         # Every value goes through the environment and json.dumps, never into the shell line: the
         # commit message is attacker-influenced text and this step handles a bearer token. The
@@ -210,7 +227,7 @@ jobs:
         env:
           TOKEN: ${{ secrets.TLC_IMAGE_REPORT_TOKEN }}
           IMAGE: 102865637207.dkr.ecr.eu-north-1.amazonaws.com/loop-stack/graphiti
-          DIGEST: ${{ steps.build.outputs.digest }}
+          DIGEST: ${{ needs.image.outputs.digest }}
           REPO: ${{ github.repository }}
           SHA: ${{ github.sha }}
           RUN_ID: ${{ github.run_id }}
