@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     # variable exists and auth can be dropped without a rollback build.
     graphiti_token: str | None = Field(None)
     # A second, read-only bearer (loop chat's brain plugin, through tlmcp). It
-    # reaches only the four read handlers in main.READ_TOKEN_ENDPOINTS; every
+    # reaches only the three read handlers in main.READ_TOKEN_ENDPOINTS; every
     # other route, /clear and the deletes included, answers it 403. Unset (the
     # default) changes nothing. Set without GRAPHITI_TOKEN, shorter than 32
     # characters, or equal to GRAPHITI_TOKEN, the service refuses to start.

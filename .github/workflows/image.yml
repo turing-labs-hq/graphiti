@@ -10,9 +10,10 @@ name: image
 #
 # The test job gates the build: a red check means no image. The upstream test workflows cannot be
 # that gate, they run on Zep's depot runners (this org has none, so they only queue) and none is
-# callable. So the gate is this repo's own: pyflakes over what goes into the image, then the amd64
-# image itself, imported, its graphiti_core overlays proved live, and booted against the FalkorDB
-# the falkordb block runs, with the block's env names and the block's own healthcheck.
+# callable. So the gate is this repo's own: pyflakes over what goes into the image, the server's
+# read-token tests, then the amd64 image itself, imported, its graphiti_core overlays proved live,
+# and booted against the FalkorDB the falkordb block runs, with the block's env names and the
+# block's own healthcheck.
 #
 # Two prerequisites live outside this repo: the push role and the report secret. The role is
 # tl-platform cloud/control/registry/aws-registry.sh `ci graphiti loop-stack` (ADMIN), the ECR
@@ -73,6 +74,11 @@ jobs:
         # Hard errors only (syntax, undefined names, unused imports): style is lint.yml's job, and a
         # style nit must not hold back a fix. ruff pinned to the version uv.lock and lint.yml use.
         run: pipx run --spec ruff==0.14.11 ruff check --select E9,F --output-format=github server/graph_service graphiti_core
+      - name: the server's read-token tests
+        # server/tests/test_read_token.py: no database, no model, a fake graphiti. Pull requests run
+        # the same tests in read-token-tests.yml; here they gate the image.
+        working-directory: server
+        run: pipx run --spec uv==0.11.11 uv run --frozen --extra dev pytest -q -p no:cacheprovider tests/test_read_token.py
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
       - name: build the amd64 image (never pushed)
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2

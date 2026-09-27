@@ -1,4 +1,4 @@
-"""GRAPHITI_READ_TOKEN: a second bearer that reaches the four read handlers
+"""GRAPHITI_READ_TOKEN: a second bearer that reaches the three read handlers
 loop chat's brain plugin calls, and nothing else.
 
 No database and no network: the graphiti dependency is a fake that records
@@ -112,13 +112,16 @@ def _auth(token):
 READS = [
     ('POST', '/search', {'query': 'q', 'group_ids': ['internal']}),
     ('POST', '/search-nodes', {'query': 'q', 'group_ids': ['internal']}),
-    ('GET', '/entity-edge/0b0e7b2c-0000-4000-8000-000000000000', None),
     ('GET', '/episodes/internal?last_n=1', None),
 ]
+ENTITY_EDGE = ('GET', '/entity-edge/0b0e7b2c-0000-4000-8000-000000000000', None)
 
 # Every route the read token must not reach, the design's /clear and group
 # deletes first. POST /get-memory is a read the brain plugin does not call.
+# GET /entity-edge/{uuid} is a read no caller can scope to a group (it looks
+# the uuid up on the default graph and returns no group_id).
 REFUSED = [
+    ENTITY_EDGE,
     ('POST', '/clear', None),
     ('DELETE', '/group/internal', None),
     ('DELETE', '/entity-edge/0b0e7b2c-0000-4000-8000-000000000000', None),
@@ -163,7 +166,7 @@ FULL_ONLY = [
 ]
 
 
-@pytest.mark.parametrize(('method', 'path', 'body'), READS)
+@pytest.mark.parametrize(('method', 'path', 'body'), [*READS, ENTITY_EDGE])
 def test_full_token_still_reads(client, fake, method, path, body):
     answer = client.request(method, path, json=body, headers=_auth(FULL))
     assert answer.status_code == 200, answer.text

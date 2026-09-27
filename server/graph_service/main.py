@@ -17,15 +17,22 @@ logger = logging.getLogger(__name__)
 AUTH_EXEMPT_PATHS = {'/healthcheck'}
 
 # The only handlers GRAPHITI_READ_TOKEN reaches: the reads loop chat's brain
-# plugin makes. Every other route answers it 403, the writes, the deletes and
-# /clear included, and so does any route added later until it is listed here.
-# Keyed by the handler the router would run, never by a path string, so no
-# spelling of a path can reach a write handler with the read token.
+# plugin makes, each of which names the groups it reads, so the plugin can hold
+# every call to the person's namespaces. Every other route answers it 403, the
+# writes, the deletes and /clear included, and so does any route added later
+# until it is listed here. Keyed by the handler the router would run, never by
+# a path string, so no spelling of a path can reach a write handler with the
+# read token.
+#
+# Not GET /entity-edge/{uuid}: it takes no group, looks the uuid up on the
+# default graph (FalkorDB keeps each group in its own graph, and
+# get_entity_edge has no per-group routing) and answers a fact with no
+# group_id, so no caller can hold it to a namespace. It goes on the list only
+# once it is group-scoped.
 READ_TOKEN_ENDPOINTS = frozenset(
     {
         retrieve.search,
         retrieve.search_nodes,
-        retrieve.get_entity_edge,
         retrieve.get_episodes,
     }
 )
@@ -75,8 +82,8 @@ async def lifespan(_: FastAPI):
         )
     if settings.graphiti_read_token:
         logger.warning(
-            'GRAPHITI_READ_TOKEN is set: it reaches POST /search, POST /search-nodes, '
-            'GET /entity-edge/{uuid} and GET /episodes/{group_id} only'
+            'GRAPHITI_READ_TOKEN is set: it reaches POST /search, POST /search-nodes '
+            'and GET /episodes/{group_id} only'
         )
     await initialize_graphiti(settings)
     yield
