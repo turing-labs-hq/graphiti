@@ -180,3 +180,21 @@ When working with the MCP server, follow the patterns established in `mcp_server
 - Use specific entity type filters (`Preference`, `Procedure`, `Requirement`)
 - Store new information immediately using `add_memory`
 - Follow discovered procedures and respect established preferences
+
+## Turing Labs fork: the server's bearer tokens
+
+`server/graph_service/main.py` guards every route but `/healthcheck` with a bearer middleware:
+
+- `GRAPHITI_TOKEN` reaches every route. Unset, the API is open (a startup warning says so)
+- `GRAPHITI_READ_TOKEN` (optional, added for loop chat's brain plugin through tlmcp) reaches only
+  the handlers in `READ_TOKEN_ENDPOINTS`: `POST /search`, `POST /search-nodes`,
+  `GET /entity-edge/{uuid}` and `GET /episodes/{group_id}`. Every other route answers it 403,
+  `/clear`, the deletes and the writes included, and so does any route added later until it is
+  listed. The check resolves the handler the router would run, never a path string. Unset, nothing
+  changes. The service refuses to start when it is set without `GRAPHITI_TOKEN`, is shorter than
+  32 characters, or equals `GRAPHITI_TOKEN`; a request reaching such a process anyway gets 503
+- It does not restrict group ids: which namespaces a caller may read is the caller's job (the
+  tlmcp plugin holds each connection to its namespaces)
+- Tests: `server/tests/test_read_token.py` (no database, no network; each guard was proven by
+  deleting it). `.github/workflows/image.yml` boots the image with both tokens and checks the read
+  token reads and is 403 on `/clear`, a group delete and a write before any image is pushed

@@ -110,7 +110,7 @@ jobs:
           print(f'{len(pairs)} overlays, {bad} not live (package at {pkg})')
           sys.exit(1 if bad else 0)
           PY
-      - name: the image boots against FalkorDB and enforces its bearer
+      - name: the image boots against FalkorDB and enforces its bearers
         # The block's env names with throwaway values: no real key or password exists in this job.
         # PORT is inert (the image's CMD binds 8000 whatever it says) and set only because the block
         # sets it.
@@ -123,6 +123,8 @@ jobs:
           FALKORDB_PASSWORD: ci-throwaway-password
           FALKORDB_DATABASE: default_db
           GRAPHITI_TOKEN: ci-throwaway-token
+          # The read-only bearer (at least 32 characters, or the service refuses to start).
+          GRAPHITI_READ_TOKEN: ci-throwaway-read-token-0123456789abcdef
           ONTOLOGY_ENABLED: "true"
           GLOSSARY_ENABLED: "true"
           INGEST_JOB_TIMEOUT_SECONDS: "300"
@@ -139,7 +141,7 @@ jobs:
           done
           docker run -d --name graphiti --network graphiti-ci -p 127.0.0.1:8000:8000 \
             -e PORT -e OPENAI_API_KEY -e DB_BACKEND -e FALKORDB_HOST -e FALKORDB_PORT -e FALKORDB_PASSWORD \
-            -e FALKORDB_DATABASE -e GRAPHITI_TOKEN -e ONTOLOGY_ENABLED -e GLOSSARY_ENABLED \
+            -e FALKORDB_DATABASE -e GRAPHITI_TOKEN -e GRAPHITI_READ_TOKEN -e ONTOLOGY_ENABLED -e GLOSSARY_ENABLED \
             -e INGEST_JOB_TIMEOUT_SECONDS "$TEST_IMAGE" >/dev/null
           # The block gives it a 60s start period; 90s here before calling it hung.
           for i in $(seq 1 90); do
@@ -161,7 +163,18 @@ jobs:
           # The right bearer reads the empty graph through the overlaid FalkorDB driver.
           code=$(printf 'Authorization: Bearer %s\n' "$GRAPHITI_TOKEN" | curl -s -o /dev/null -w '%{http_code}' -H @- "$url")
           [ "$code" = 200 ] || fail "right bearer: expected 200 from FalkorDB, got $code"
-          echo "boot, healthcheck, non-root, 401 without and with a wrong bearer, 200 with the right one"
+          # The read-only bearer reads, and is refused on /clear, a group delete and a write.
+          read_bearer() { printf 'Authorization: Bearer %s\n' "$GRAPHITI_READ_TOKEN"; }
+          code=$(read_bearer | curl -s -o /dev/null -w '%{http_code}' -H @- "$url")
+          [ "$code" = 200 ] || fail "read bearer on a read: expected 200, got $code"
+          code=$(read_bearer | curl -s -o /dev/null -w '%{http_code}' -H @- -X POST http://127.0.0.1:8000/clear)
+          [ "$code" = 403 ] || fail "read bearer on /clear: expected 403, got $code"
+          code=$(read_bearer | curl -s -o /dev/null -w '%{http_code}' -H @- -X DELETE http://127.0.0.1:8000/group/ci-smoke)
+          [ "$code" = 403 ] || fail "read bearer on a group delete: expected 403, got $code"
+          code=$(read_bearer | curl -s -o /dev/null -w '%{http_code}' -H @- -H 'Content-Type: application/json' \
+            -X POST --data '{"group_id":"ci-smoke","messages":[]}' http://127.0.0.1:8000/messages)
+          [ "$code" = 403 ] || fail "read bearer on a write: expected 403, got $code"
+          echo "boot, healthcheck, non-root, 401 without and with a wrong bearer, 200 with the right one, the read bearer reads and is 403 on /clear, a group delete and a write"
       - name: clean up
         if: always()
         run: docker rm -f graphiti falkordb >/dev/null 2>&1 || true
