@@ -180,3 +180,32 @@ When working with the MCP server, follow the patterns established in `mcp_server
 - Use specific entity type filters (`Preference`, `Procedure`, `Requirement`)
 - Store new information immediately using `add_memory`
 - Follow discovered procedures and respect established preferences
+
+## Turing Labs fork: the server's bearer tokens
+
+`server/graph_service/main.py` guards every route but `/healthcheck` with a bearer middleware:
+
+- `GRAPHITI_TOKEN` reaches every route. Unset, the API is open (a startup warning says so)
+- `GRAPHITI_READ_TOKEN` (optional, added for loop chat's brain plugin through tlmcp) reaches only
+  the handlers in `READ_TOKEN_ENDPOINTS`: `POST /search`, `POST /search-nodes` and
+  `GET /episodes/{group_id}`, each of which names the groups it reads. Every other route answers
+  it 403, `/clear`, the deletes and the writes included, and so does any route added later until it
+  is listed. The check resolves the handler the router would run, never a path string. Unset, nothing
+  changes. The service refuses to start when it is set without `GRAPHITI_TOKEN`, is shorter than
+  32 characters, or equals `GRAPHITI_TOKEN`; a request reaching such a process anyway gets 503
+- It does not restrict group ids: which namespaces a caller may read is the caller's job (the
+  tlmcp plugin holds each connection to its namespaces). `/search` and `/search-nodes` with no
+  `group_ids` read the default graph, so the plugin must always send them
+- `GET /entity-edge/{uuid}` is off the read token on purpose (2026-09-27 review): it takes no
+  group, `get_entity_edge` looks the uuid up on the default graph with no per-group routing (each
+  group is its own FalkorDB graph, `graphiti_core/decorators.py` `handle_multiple_group_ids`), and
+  the fact it answers carries no `group_id` (`get_fact_result_from_edge`), so no caller can hold it
+  to a namespace. `/search` facts carry no `group_id` either (`/search-nodes` nodes do). A
+  group-scoped lookup (a `group_id` it routes by, returned with the fact) is what would put it back
+- Tests: `server/tests/test_read_token.py` (no database, no network; each guard was proven by
+  deleting it). They run in CI in two places, because the upstream test workflows run on depot
+  runners this org has none of and never pick a job up: `.github/workflows/read-token-tests.yml`
+  on every pull request and push to main touching `server/`, and the test job of
+  `.github/workflows/image.yml`, which gates the image. That job also boots the image with both
+  tokens and checks the read token reads and is 403 on `/clear`, a group delete and a write before
+  any image is pushed
