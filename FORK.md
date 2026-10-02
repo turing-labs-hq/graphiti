@@ -13,10 +13,11 @@ deployed into loop as the `graphiti` block of loop-stack.
 | Deleted: `ai-moderator.yml`, `cla.yml`, `claude.yml`, `claude-code-review.yml`, `claude-code-review-manual.yml`, `pr-triage.yml`, `release-graphiti-core.yml`, `release-mcp-server.yml`, `release-server-container.yml` | upstream's own automation: AI review and triage bots, the contributor agreement bot and the PyPI and Docker Hub releases. None is used here, several ran on outsiders' events (`pull_request_target`, issue comments) with `id-token: write` or write permissions, which this repo must not offer since it deploys into loop. Deleting them is what keeps them off: workflows that never ran cannot be disabled through GitHub's API |
 | `lint.yml` runs on `pull_request`, not `pull_request_target` | no workflow runs in the base context for a PR here |
 | `runs-on: ubuntu-latest` instead of `depot-ubuntu-*` | Depot runners are upstream's paid pool and do not exist in this org: every run of lint, type check and the tests was cancelled before this change |
+| The test jobs start `falkordb/falkordb:v4.20.6`, not `latest` | the version loop runs (tl-platform catalog block `falkordb`); `latest` moved `db.idx.fulltext.createNodeIndex` to a new signature and broke the database integration tests, and production should be what is tested |
 
 ## Syncing from upstream
 
 Keep the deletions: a modify/delete conflict on one of the files above resolves to "deleted". Keep
 `ubuntu-latest` and the `pull_request` trigger. Re-read any new upstream workflow before it reaches
 `main`: a new one that runs on outsiders' events or asks for `id-token: write` gets deleted or
-disabled here, and a new `depot-` runner gets `ubuntu-latest`.
+disabled here, a new `depot-` runner gets `ubuntu-latest`, and the FalkorDB pin follows loop's catalog when loop upgrades.

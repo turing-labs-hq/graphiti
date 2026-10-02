@@ -48,7 +48,7 @@ jobs:
         # Run the database on the host network rather than a `services:` block: on
         # the depot-ubuntu runner pool bridge-network NAT silently drops packets to
         # published service-container ports. Readiness is checked via `docker exec`.
-        run: docker run -d --name falkordb --network host falkordb/falkordb:latest
+        run: docker run -d --name falkordb --network host falkordb/falkordb:v4.20.6
       - name: Install dependencies
         working-directory: server
         run: uv sync --extra dev
