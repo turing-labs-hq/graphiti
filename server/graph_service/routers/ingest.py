@@ -100,10 +100,7 @@ async def add_messages(
         # payloads into fake dialogue — the message-extraction prompt reads the
         # text before the first colon as the SPEAKER, minting pseudo-speaker
         # entities (e.g. 'knowledge-bundle', 'call-transcript') on every episode.
-        if m.role:
-            episode_body = f'{m.role}({m.role_type}): {m.content}'
-        else:
-            episode_body = m.content
+        episode_body = f'{m.role}({m.role_type}): {m.content}' if m.role else m.content
         # Typed ontology (graph_service/ontology.py): constrains extraction to
         # the shared bundle/graph node + edge types. ONTOLOGY_ENABLED=false
         # reverts to untyped extraction without a rollback build.

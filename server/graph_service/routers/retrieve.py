@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, status
-
 from graphiti_core.search.search_config_recipes import (  # type: ignore
     EDGE_HYBRID_SEARCH_RRF,
     NODE_HYBRID_SEARCH_RRF,
@@ -120,10 +119,16 @@ async def search_nodes(query: NodeSearchQuery, graphiti: ZepGraphitiDep):
     scores = list(results.node_reranker_scores) + [None] * len(results.nodes)
     nodes = [
         NodeResult(
-            uuid=node.uuid, name=node.name, summary=node.summary,
-            labels=list(node.labels or []), group_id=node.group_id,
-            attributes={k: v for k, v in (node.attributes or {}).items()
-                        if isinstance(v, (str, int, float, bool)) or v is None},
+            uuid=node.uuid,
+            name=node.name,
+            summary=node.summary,
+            labels=list(node.labels or []),
+            group_id=node.group_id,
+            attributes={
+                k: v
+                for k, v in (node.attributes or {}).items()
+                if isinstance(v, (str, int, float, bool)) or v is None
+            },
             score=score,
         )
         for node, score in zip(results.nodes, scores, strict=False)

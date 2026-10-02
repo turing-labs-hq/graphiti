@@ -51,8 +51,16 @@ class TestFalkorDriver:
                 host='test-host', port='1234', username='test-user', password='test-pass'
             )
             assert driver.provider == GraphProvider.FALKORDB
+            # the fork's connection hardening (keepalive, health checks, a bounded socket read)
+            # is part of the contract: losing it froze the ingest worker on 2026-07-29/30
             mock_falkor_db.assert_called_once_with(
-                host='test-host', port='1234', username='test-user', password='test-pass'
+                host='test-host',
+                port='1234',
+                username='test-user',
+                password='test-pass',
+                socket_keepalive=True,
+                health_check_interval=25,
+                socket_timeout=180,
             )
 
     @unittest.skipIf(not HAS_FALKORDB, 'FalkorDB is not installed')
