@@ -42,9 +42,7 @@ class SearchQuery(BaseModel):
 
 
 class NodeSearchQuery(BaseModel):
-    group_ids: list[str] | None = Field(
-        None, description='The group ids for the nodes to search'
-    )
+    group_ids: list[str] | None = Field(None, description='The group ids for the nodes to search')
     query: str
     max_nodes: int = Field(default=10, description='The maximum number of nodes to retrieve')
     entity_types: list[str] | None = Field(

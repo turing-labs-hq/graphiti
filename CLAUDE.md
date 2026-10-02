@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+**This is turing-labs-hq's fork, deployed into loop as the Brain's graph service.** Read `FORK.md` first:
+it lists what differs from upstream (our `image.yml`, the deleted upstream bots and release jobs, the
+`pull_request` lint, GitHub-hosted runners, FalkorDB pinned to the version loop runs) and how to keep
+those differences through an upstream sync. A merge to `main` builds and reports an image; it is not
+deployed until loop-stack's `auto-release.json` lists `graphiti` or a loop release takes it.
+
 ## Project Overview
 
 Graphiti is a Python framework for building temporally-aware knowledge graphs designed for AI agents. It enables real-time incremental updates to knowledge graphs without batch recomputation, making it suitable for dynamic environments.
