@@ -14,6 +14,7 @@ deployed into loop as the `graphiti` block of loop-stack.
 | `lint.yml` runs on `pull_request`, not `pull_request_target` | no workflow runs in the base context for a PR here |
 | `runs-on: ubuntu-latest` instead of `depot-ubuntu-*` | Depot runners are upstream's paid pool and do not exist in this org: every run of lint, type check and the tests was cancelled before this change |
 | The test jobs start `falkordb/falkordb:v4.20.6`, not `latest` | the version loop runs (tl-platform catalog block `falkordb`); `latest` moved `db.idx.fulltext.createNodeIndex` to a new signature and broke the database integration tests, and production should be what is tested |
+| `actions/checkout` steps set `persist-credentials: false`; `mcp_server/docker/Dockerfile` builds `FROM falkordb/falkordb:v4.20.6@sha256:...`, not `latest` | Aikido findings: no job here pushes, so none keeps the token in `.git/config`; a moving base tag is a supply-chain risk. Keep both through a sync |
 
 ## Syncing from upstream
 
