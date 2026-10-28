@@ -2,7 +2,9 @@
 # Combined FalkorDB + Graphiti MCP Server Image
 # This extends the official FalkorDB image to include the MCP server
 
-FROM falkordb/falkordb:latest AS falkordb-base
+# Pinned to the FalkorDB version loop runs (the digest image.yml pins, see FORK.md); bump
+# deliberately, never through `latest`.
+FROM falkordb/falkordb:v4.20.6@sha256:217bc520be076ce9e85b0ba426b2379ccbaebd17f2fe6e174288bd1b36d486bb AS falkordb-base
 
 # Install Python and system dependencies
 # Note: Debian Bookworm (FalkorDB base) ships with Python 3.11
