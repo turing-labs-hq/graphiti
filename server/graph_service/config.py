@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     # (a loud startup warning is logged) so the patch can deploy before the
     # variable exists and auth can be dropped without a rollback build.
     graphiti_token: str | None = Field(None)
+    # A second, read-only bearer (loop chat's brain plugin, through tlmcp). It
+    # reaches only the three read handlers in main.READ_TOKEN_ENDPOINTS; every
+    # other route, /clear and the deletes included, answers it 403. Unset (the
+    # default) changes nothing. Set without GRAPHITI_TOKEN, shorter than 32
+    # characters, or equal to GRAPHITI_TOKEN, the service refuses to start.
+    graphiti_read_token: str | None = Field(None)
     # Typed extraction ontology (graph_service/ontology.py) on /messages.
     # Set ONTOLOGY_ENABLED=false to fall back to untyped extraction without
     # a rollback build.

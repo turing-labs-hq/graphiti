@@ -1,0 +1,43 @@
+name: read-token tests
+
+# The server's own tests for GRAPHITI_READ_TOKEN (server/tests/test_read_token.py) on every pull
+# request and every push to main that touches the server. The upstream test workflows cannot do it:
+# they run on Zep's depot runners (this org has none, so their jobs only queue) and none of them runs
+# server/tests. image.yml runs the same tests, but only on main, after a merge. This is the check a
+# pull request that edits server/graph_service/main.py has to pass.
+#
+# No secrets, no database, no model: the tests use a fake graphiti and build their own settings.
+# The only network is the package index, for the dependencies server/uv.lock pins (--frozen: the
+# lockfile as committed, never re-resolved).
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "server/**"
+      - ".github/workflows/read-token-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "server/**"
+      - ".github/workflows/read-token-tests.yml"
+
+permissions: {}
+
+concurrency:
+  group: read-token-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  read-token-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: server/tests/test_read_token.py
+        working-directory: server
+        # uv pinned by version through pipx (preinstalled on the runner), as image.yml pins ruff.
+        run: pipx run --spec uv==0.11.11 uv run --frozen --extra dev pytest -q -p no:cacheprovider tests/test_read_token.py
