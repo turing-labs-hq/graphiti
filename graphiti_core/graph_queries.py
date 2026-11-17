@@ -5,6 +5,8 @@ This module provides database-agnostic query generation for Neo4j and FalkorDB,
 supporting index creation, fulltext search, and bulk operations.
 """
 
+import re
+
 from typing_extensions import LiteralString
 
 from graphiti_core.driver.driver import GraphProvider
@@ -23,6 +25,34 @@ INDEX_TO_LABEL_KUZU_MAPPING = {
     'episode_content': 'Episodic',
     'edge_name_and_fact': 'RelatesToNode_',
 }
+
+# Fulltext index names the query builders below may interpolate. Index names cannot be passed as
+# query parameters, so they are checked against this allow-list instead.
+FULLTEXT_NODE_INDEX_NAMES = frozenset(
+    {'node_name_and_summary', 'community_name', 'episode_content'}
+)
+FULLTEXT_RELATIONSHIP_INDEX_NAMES = frozenset({'edge_name_and_fact'})
+
+# The fulltext search term reaches the query as a Cypher expression, never as text: either a
+# query parameter (`$query`) or a property of a bound variable (`node.fulltext_query`).
+_CYPHER_PARAMETER_OR_PROPERTY = re.compile(
+    r'\$[A-Za-z_][A-Za-z0-9_]*|[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+'
+)
+
+
+def _validate_index_name(name: str, allowed: frozenset[str]) -> str:
+    if name not in allowed:
+        raise ValueError(f'Unknown fulltext index name: {name!r}')
+    return name
+
+
+def _validate_query_expression(query: str) -> str:
+    if not isinstance(query, str) or not _CYPHER_PARAMETER_OR_PROPERTY.fullmatch(query):
+        raise ValueError(
+            'Fulltext query must be a Cypher parameter (e.g. "$query") or a property reference '
+            f'(e.g. "node.fulltext_query"), got {query!r}'
+        )
+    return query
 
 
 def get_range_indices(provider: GraphProvider) -> list[LiteralString]:
@@ -141,6 +171,9 @@ def get_fulltext_indices(provider: GraphProvider) -> list[LiteralString]:
 
 
 def get_nodes_query(name: str, query: str, limit: int, provider: GraphProvider) -> str:
+    name = _validate_index_name(name, FULLTEXT_NODE_INDEX_NAMES)
+    query = _validate_query_expression(query)
+
     if provider == GraphProvider.FALKORDB:
         label = NEO4J_TO_FALKORDB_MAPPING[name]
         return f"CALL db.idx.fulltext.queryNodes('{label}', {query})"
@@ -164,6 +197,8 @@ def get_vector_cosine_func_query(vec1, vec2, provider: GraphProvider) -> str:
 
 
 def get_relationships_query(name: str, limit: int, provider: GraphProvider) -> str:
+    name = _validate_index_name(name, FULLTEXT_RELATIONSHIP_INDEX_NAMES)
+
     if provider == GraphProvider.FALKORDB:
         label = NEO4J_TO_FALKORDB_MAPPING[name]
         return f"CALL db.idx.fulltext.queryRelationships('{label}', $query)"

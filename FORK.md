@@ -15,6 +15,8 @@ deployed into loop as the `graphiti` block of loop-stack.
 | `runs-on: ubuntu-latest` instead of `depot-ubuntu-*` | Depot runners are upstream's paid pool and do not exist in this org: every run of lint, type check and the tests was cancelled before this change |
 | The test jobs start `falkordb/falkordb:v4.20.6`, not `latest` | the version loop runs (tl-platform catalog block `falkordb`); `latest` moved `db.idx.fulltext.createNodeIndex` to a new signature and broke the database integration tests, and production should be what is tested |
 | `actions/checkout` steps set `persist-credentials: false`; `mcp_server/docker/Dockerfile` builds `FROM falkordb/falkordb:v4.20.6@sha256:...`, not `latest` | Aikido findings: no job here pushes, so none keeps the token in `.git/config`; a moving base tag is a supply-chain risk. Keep both through a sync |
+| `graphiti_core/telemetry/telemetry.py` reads its PostHog key from `GRAPHITI_POSTHOG_API_KEY` (unset: telemetry off) | Aikido leaked-secret finding on upstream's hard-coded (public, write-only) Zep project key; this fork does not report usage to Zep by default. Keep through a sync |
+| The root `Dockerfile` mounts `uv` from a pinned `ghcr.io/astral-sh/uv` image only while building, runs `apt-get upgrade`, upgrades pip and installs no curl | Aikido container findings: the uv binary bundles vulnerable Rust crates (quinn-proto, quinn-udp, zerovec) even in its latest release and is not needed at runtime; pip and the Debian packages lag the base tag. Keep through a sync |
 
 ## Syncing from upstream
 

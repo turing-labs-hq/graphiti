@@ -1,5 +1,9 @@
 # syntax=docker/dockerfile:1.9
-FROM python:3.12-slim
+# Pinned by digest (python:3.12-slim-trixie); bump deliberately. uv comes from a pinned image and is
+# only mounted while building: its binary bundles Rust crates (quinn-proto, quinn-udp, zerovec)
+# Aikido flags, and nothing at runtime needs it.
+FROM ghcr.io/astral-sh/uv:0.13.8@sha256:5cc1805e2426484abca4ad46ea783bab281fdb225fd82d8ce6d66a81254bac85 AS uv
+FROM python:3.12-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
 
 # Inherit build arguments for labels
 # Pinned: the unpinned `uv pip install --upgrade` was silently pulling the
@@ -26,15 +30,12 @@ LABEL org.opencontainers.image.source="https://github.com/getzep/graphiti"
 LABEL org.opencontainers.image.documentation="https://github.com/getzep/graphiti/tree/main/server"
 LABEL io.graphiti.core.version="${GRAPHITI_VERSION}"
 
-# Install uv using the installer script
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
+# Pick up Debian security fixes newer than the base digest (apt, zlib, ...) and a patched pip.
+# curl is not installed: only the old uv installer used it, and the healthcheck uses python.
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-ADD https://astral.sh/uv/install.sh /uv-installer.sh
-RUN sh /uv-installer.sh && rm /uv-installer.sh
-ENV PATH="/root/.local/bin:$PATH"
+    && rm -rf /var/lib/apt/lists/* \
+    && python -m pip install --no-cache-dir --upgrade "pip==26.3"
 
 # Configure uv for runtime
 ENV UV_COMPILE_BYTECODE=1 \
@@ -54,6 +55,7 @@ COPY ./server/graph_service ./graph_service
 # This prevents the stale lockfile from pinning an old graphiti-core version
 ARG INSTALL_FALKORDB=true
 RUN --mount=type=cache,target=/root/.cache/uv,id=s/a5e8d61f-bfe2-4d50-be77-ef89cb4bc46e-uv-cache \
+    --mount=type=bind,from=uv,source=/uv,target=/usr/local/bin/uv \
     uv sync --frozen --no-dev && \
     if [ -n "$GRAPHITI_VERSION" ]; then \
         if [ "$INSTALL_FALKORDB" = "true" ]; then \

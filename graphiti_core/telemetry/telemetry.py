@@ -12,11 +12,14 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-# PostHog configuration
-# Note: This is a public API key intended for client-side use and safe to commit
-# PostHog public keys are designed to be exposed in client applications
-POSTHOG_API_KEY = 'phc_UG6EcfDbuXz92neb3rMlQFDY0csxgMqRcIPWESqnSmo'
-POSTHOG_HOST = 'https://us.i.posthog.com'
+# PostHog configuration, read from the environment.
+# Upstream hard-codes Zep's public (write-only ingestion) project key here. This fork keeps no key in
+# the source tree: telemetry is sent only when GRAPHITI_POSTHOG_API_KEY names a project key, so by
+# default nothing is reported to anyone.
+POSTHOG_API_KEY_ENV_VAR = 'GRAPHITI_POSTHOG_API_KEY'
+POSTHOG_HOST_ENV_VAR = 'GRAPHITI_POSTHOG_HOST'
+POSTHOG_API_KEY = os.environ.get(POSTHOG_API_KEY_ENV_VAR, '').strip()
+POSTHOG_HOST = os.environ.get(POSTHOG_HOST_ENV_VAR, '').strip() or 'https://us.i.posthog.com'
 
 # Environment variable to control telemetry
 TELEMETRY_ENV_VAR = 'GRAPHITI_TELEMETRY_ENABLED'
@@ -30,6 +33,10 @@ def is_telemetry_enabled() -> bool:
     """Check if telemetry is enabled."""
     # Disable during pytest runs
     if 'pytest' in sys.modules:
+        return False
+
+    # No project key configured: nowhere to send events
+    if not POSTHOG_API_KEY:
         return False
 
     # Check environment variable (default: enabled)

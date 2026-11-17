@@ -623,6 +623,10 @@ When using smaller or local models:
 
 ## Telemetry
 
+> **This fork:** the PostHog project key is not in the source tree. Telemetry is sent only when
+> `GRAPHITI_POSTHOG_API_KEY` is set (and `GRAPHITI_POSTHOG_HOST` optionally overrides the host), so
+> by default it is off.
+
 Graphiti collects anonymous usage statistics to help us understand how the framework is being used and improve it for
 everyone. We believe transparency is important, so here's exactly what we collect and why.
 
