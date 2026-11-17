@@ -27,7 +27,7 @@ This example demonstrates the basic functionality of Graphiti, including:
 1. Install the required dependencies:
 
 ```bash
-pip install graphiti-core
+pip install -r requirements.txt  # from examples/quickstart; exact pins
 ```
 
 2. Set up environment variables:

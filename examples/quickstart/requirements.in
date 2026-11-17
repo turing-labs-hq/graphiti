@@ -1,0 +1,8 @@
+# Source for requirements.txt. graphiti-core is pinned to the release this fork ships
+# (version in the root pyproject.toml); the transitive pins are held to the root uv.lock.
+# Regenerate from the repository root:
+#   uv export --frozen --no-hashes --no-emit-project > /tmp/graphiti-constraints.txt
+#   uv pip compile examples/quickstart/requirements.in -c /tmp/graphiti-constraints.txt \
+#     --universal --python-version 3.10 --no-header -o examples/quickstart/requirements.txt
+graphiti-core==0.29.2
+python-dotenv>=1.0.0

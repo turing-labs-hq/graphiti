@@ -1,2 +1,137 @@
-graphiti-core
-python-dotenv>=1.0.0
+# Pinned from requirements.in; see that file for how to regenerate.
+annotated-types==0.7.0
+    # via
+    #   -c root uv.lock (uv export)
+    #   pydantic
+anyio==4.12.1
+    # via
+    #   -c root uv.lock (uv export)
+    #   httpx
+    #   openai
+backoff==2.2.1
+    # via
+    #   -c root uv.lock (uv export)
+    #   posthog
+certifi==2026.10.23
+    # via
+    #   -c root uv.lock (uv export)
+    #   httpcore
+    #   httpx
+    #   requests
+charset-normalizer==3.4.4
+    # via
+    #   -c root uv.lock (uv export)
+    #   requests
+colorama==0.4.6 ; sys_platform == 'win32'
+    # via
+    #   -c root uv.lock (uv export)
+    #   tqdm
+distro==1.9.0
+    # via
+    #   -c root uv.lock (uv export)
+    #   openai
+    #   posthog
+exceptiongroup==1.3.1 ; python_full_version < '3.11'
+    # via
+    #   -c root uv.lock (uv export)
+    #   anyio
+graphiti-core==0.29.2
+    # via -r examples/quickstart/requirements.in
+h11==0.16.0
+    # via
+    #   -c root uv.lock (uv export)
+    #   httpcore
+httpcore==1.0.9
+    # via
+    #   -c root uv.lock (uv export)
+    #   httpx
+httpx==0.28.1
+    # via
+    #   -c root uv.lock (uv export)
+    #   openai
+idna==3.18
+    # via
+    #   -c root uv.lock (uv export)
+    #   anyio
+    #   httpx
+    #   requests
+jiter==0.12.0
+    # via
+    #   -c root uv.lock (uv export)
+    #   openai
+neo4j==6.1.0
+    # via
+    #   -c root uv.lock (uv export)
+    #   graphiti-core
+numpy==2.2.6 ; python_full_version < '3.11'
+    # via
+    #   -c root uv.lock (uv export)
+    #   graphiti-core
+numpy==2.4.6 ; python_full_version == '3.11.*'
+    # via
+    #   -c root uv.lock (uv export)
+    #   graphiti-core
+numpy==2.5.4 ; python_full_version >= '3.12'
+    # via
+    #   -c root uv.lock (uv export)
+    #   graphiti-core
+openai==2.32.0
+    # via
+    #   -c root uv.lock (uv export)
+    #   graphiti-core
+posthog==7.76.0
+    # via
+    #   -c root uv.lock (uv export)
+    #   graphiti-core
+pydantic==2.12.5
+    # via
+    #   -c root uv.lock (uv export)
+    #   graphiti-core
+    #   openai
+pydantic-core==2.41.5
+    # via
+    #   -c root uv.lock (uv export)
+    #   pydantic
+python-dotenv==1.2.2
+    # via
+    #   -c root uv.lock (uv export)
+    #   -r examples/quickstart/requirements.in
+    #   graphiti-core
+pytz==2025.2
+    # via
+    #   -c root uv.lock (uv export)
+    #   neo4j
+requests==2.34.2
+    # via
+    #   -c root uv.lock (uv export)
+    #   posthog
+sniffio==1.3.1
+    # via
+    #   -c root uv.lock (uv export)
+    #   openai
+tenacity==9.1.2
+    # via
+    #   -c root uv.lock (uv export)
+    #   graphiti-core
+tqdm==4.67.1
+    # via
+    #   -c root uv.lock (uv export)
+    #   openai
+typing-extensions==4.15.0
+    # via
+    #   -c root uv.lock (uv export)
+    #   anyio
+    #   exceptiongroup
+    #   openai
+    #   posthog
+    #   pydantic
+    #   pydantic-core
+    #   typing-inspection
+typing-inspection==0.4.2
+    # via
+    #   -c root uv.lock (uv export)
+    #   pydantic
+urllib3==2.8.0
+    # via
+    #   -c root uv.lock (uv export)
+    #   requests
